@@ -1,33 +1,32 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Serve static files (if any)
-app.use(express.static('public'));
+// Serve static files like HTML (if applicable)
+app.use(express.static("public"));
 
-// Listen for incoming connections
-io.on('connection', (socket) => {
-  console.log('a user connected');
+// Log when a user connects
+io.on("connection", (socket) => {
+    console.log("A user connected");
 
-  // Listen for messages from clients
-  socket.on('message', (msg) => {
-    console.log('message: ' + msg);
+    // Log the received message and broadcast it
+    socket.on("message", (msg) => {
+        console.log("Message received:", msg); // Debugging log
+        io.emit("message", msg); // Broadcast the message to all clients
+    });
 
-    // Broadcast the message to all other clients
-    io.emit('message', msg); // Send to all clients
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('user disconnected');
-  });
+    // Log when a user disconnects
+    socket.on("disconnect", () => {
+        console.log("A user disconnected");
+    });
 });
 
-// Start the server on port 3000
-server.listen(process.env.PORT || 3000, () => {
-  console.log('Server is running...');
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
