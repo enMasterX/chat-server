@@ -1,26 +1,33 @@
-const express = require("express");
-const http = require("http");
-const socketIo = require("socket.io");
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Use Render’s assigned PORT or default to 10000
-const PORT = process.env.PORT || 10000;
+// Serve static files (if any)
+app.use(express.static('public'));
 
-io.on("connection", (socket) => {
-    console.log("A user connected");
+// Listen for incoming connections
+io.on('connection', (socket) => {
+  console.log('a user connected');
 
-    socket.on("message", (msg) => {
-        io.emit("message", msg);
-    });
+  // Listen for messages from clients
+  socket.on('message', (msg) => {
+    console.log('message: ' + msg);
 
-    socket.on("disconnect", () => {
-        console.log("A user disconnected");
-    });
+    // Broadcast the message to all other clients
+    io.emit('message', msg); // Send to all clients
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('user disconnected');
+  });
 });
 
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// Start the server on port 3000
+server.listen(process.env.PORT || 3000, () => {
+  console.log('Server is running...');
 });
