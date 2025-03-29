@@ -14,12 +14,20 @@ const io = socketIo(server, {
 
 io.on('connection', (socket) => {
     console.log('A user connected');
+    
+    // Handle incoming messages and emit them back to all connected clients
+    socket.on('message', (msg) => {
+        console.log("Received message:", msg);
+        io.emit('message', msg); // Emit the message to all clients
+    });
+
     socket.on('disconnect', () => {
         console.log('User disconnected');
     });
 });
 
-// Start the server on the desired port
-server.listen(3000, () => {
-    console.log('Server running on http://localhost:3000');
+// Start the server on the desired port (use environment variable or 3000)
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
 });
