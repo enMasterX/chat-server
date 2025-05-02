@@ -12,12 +12,19 @@ const io = socketIo(server, {
     }
 });
 
+// In-memory store for messages
+let messages = [];
+
 io.on('connection', (socket) => {
     console.log('A user connected');
     
+    // Send all previous messages to the new user
+    socket.emit('previousMessages', messages);
+
     // Handle incoming messages and emit them back to all connected clients
     socket.on('message', (msg) => {
         console.log("Received message:", msg);
+        messages.push(msg); // Store the message
         io.emit('message', msg); // Emit the message to all clients
     });
 
