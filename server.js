@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cron = require('node-cron');  // <-- added for scheduling
+const fs = require('fs'); // Import fs module to read/write files
 
 const app = express();
 const server = http.createServer(app);
@@ -17,11 +18,8 @@ const io = socketIo(server, {
 // Serve static files (e.g., HTML, CSS, JS)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory chat history
-let messages = [];
-
-// Maximum history size
-const MAX_HISTORY_SIZE = 100;
+// File path to store messages
+const messagesFilePath = path.join(__dirname, 'messages.json');
 
 // In-memory credentials map for admin and global chat
 let adminCredentials = {
@@ -36,17 +34,22 @@ let userCredentials = {
 // Authentication map (socket.id → username)
 let authenticatedUsers = {};
 
+// Read stored messages from file (if any)
+let messages = [];
+if (fs.existsSync(messagesFilePath)) {
+    const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
+    messages = JSON.parse(storedMessages);
+}
+
 io.on('connection', (socket) => {
     console.log('A user connected');
-
+    
     // Send previous messages when a new user connects
     socket.emit('previousMessages', messages);
 
     // Handle admin authentication
     socket.on('authenticate', (password, callback) => {
-        // Log the admin password attempt to render logs
         console.log(`Admin authentication attempt with password: ${password}`);
-
         if (adminCredentials[password]) {
             authenticatedUsers[socket.id] = adminCredentials[password];
             callback({ success: true, username: "Burkes" });
@@ -55,7 +58,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle user authentication for the global chat
+    // Handle user authentication for global chat
     socket.on('authenticateChatUser', (username, password, callback) => {
         if (userCredentials[username] && userCredentials[username] === password) {
             authenticatedUsers[socket.id] = username;
@@ -65,24 +68,24 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle incoming messages and emit them back to all connected clients
+    // Handle incoming messages
     socket.on('message', (msg) => {
         const username = authenticatedUsers[socket.id];
-        if (!username) return; // Ignore unauthenticated users
-
-        // Prepend the username to the message
-        const messageWithUsername = `${username}: ${msg}`;
+        if (!username) return;  // Ignore unauthenticated users
 
         // Push the new message to the history
-        messages.push(messageWithUsername);
+        messages.push(msg);
 
         // Cap the history size
-        if (messages.length > MAX_HISTORY_SIZE) {
+        if (messages.length > 100) {
             messages.shift();  // Remove the oldest message if we exceed the limit
         }
 
+        // Save messages to the file
+        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
+
         // Emit the new message to all clients
-        io.emit('message', messageWithUsername);
+        io.emit('message', msg);
     });
 
     socket.on('requestMessages', () => {
@@ -117,6 +120,7 @@ io.on('connection', (socket) => {
 // 🔁 Clear messages every day at midnight
 cron.schedule('0 0 * * *', () => {
     messages = [];
+    fs.writeFileSync(messagesFilePath, JSON.stringify(messages));  // Clear the file as well
     console.log('Chat messages cleared at midnight.');
 });
 
