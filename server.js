@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
-const cron = require('node-cron');  // <-- added for scheduling
+const cron = require('node-cron');
 const fs = require('fs'); // Import fs module to read/write files
 
 const app = express();
@@ -50,7 +50,7 @@ io.on('connection', (socket) => {
 
     // Send previous messages when a new user connects
     console.log('Sending previous messages:', messages);
-    socket.emit('previousMessages', messages);
+    socket.emit('previousMessages', messages); // Send all previous messages to new user
 
     // Handle admin authentication
     socket.on('authenticate', (password, callback) => {
@@ -96,7 +96,7 @@ io.on('connection', (socket) => {
 
     socket.on('requestMessages', () => {
         console.log(`Sending previous messages to ${socket.id}`);
-        socket.emit('previousMessages', messages);
+        socket.emit('previousMessages', messages); // Ensure the client gets previous messages when requested
     });
 
     socket.on('disconnect', () => {
