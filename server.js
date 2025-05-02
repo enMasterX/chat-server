@@ -36,18 +36,22 @@ let authenticatedUsers = {};
 io.on('connection', (socket) => {
     console.log('A user connected');
 
-    // Handle user authentication for the global chat
-    socket.on('authenticateChatUser', (password, callback) => {
-        // Find the username associated with the password
-        let username = null;
-        for (let user in userCredentials) {
-            if (userCredentials[user] === password) {
-                username = user;
-                break;
-            }
-        }
+    // Handle admin authentication
+    socket.on('authenticate', (password, callback) => {
+        // Log the admin password attempt to render logs
+        console.log(`Admin authentication attempt with password: ${password}`);
 
-        if (username) {
+        if (adminCredentials[password]) {
+            authenticatedUsers[socket.id] = adminCredentials[password];
+            callback({ success: true, username: "Burkes" });
+        } else {
+            callback({ success: false });
+        }
+    });
+
+    // Handle user authentication for the global chat
+    socket.on('authenticateChatUser', (username, password, callback) => {
+        if (userCredentials[username] && userCredentials[username] === password) {
             authenticatedUsers[socket.id] = username;
             callback({ success: true, username: username });
         } else {
@@ -60,10 +64,8 @@ io.on('connection', (socket) => {
         const username = authenticatedUsers[socket.id];
         if (!username) return; // Ignore unauthenticated users
 
-        // Attach username to the message
-        const fullMessage = `${username}: ${msg}`;
-        messages.push(fullMessage);
-        io.emit('message', fullMessage);
+        messages.push(msg);
+        io.emit('message', msg);
     });
 
     socket.on('requestMessages', () => {
