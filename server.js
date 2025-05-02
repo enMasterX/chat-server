@@ -20,6 +20,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In-memory chat history
 let messages = [];
 
+// Maximum history size
+const MAX_HISTORY_SIZE = 100;
+
 // In-memory credentials map for admin and global chat
 let adminCredentials = {
     "7482broncos": "Burkes"
@@ -35,6 +38,9 @@ let authenticatedUsers = {};
 
 io.on('connection', (socket) => {
     console.log('A user connected');
+
+    // Send previous messages when a new user connects
+    socket.emit('previousMessages', messages);
 
     // Handle admin authentication
     socket.on('authenticate', (password, callback) => {
@@ -64,8 +70,19 @@ io.on('connection', (socket) => {
         const username = authenticatedUsers[socket.id];
         if (!username) return; // Ignore unauthenticated users
 
-        messages.push(msg);
-        io.emit('message', msg);
+        // Prepend the username to the message
+        const messageWithUsername = `${username}: ${msg}`;
+
+        // Push the new message to the history
+        messages.push(messageWithUsername);
+
+        // Cap the history size
+        if (messages.length > MAX_HISTORY_SIZE) {
+            messages.shift();  // Remove the oldest message if we exceed the limit
+        }
+
+        // Emit the new message to all clients
+        io.emit('message', messageWithUsername);
     });
 
     socket.on('requestMessages', () => {
