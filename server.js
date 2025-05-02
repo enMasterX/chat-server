@@ -1,39 +1,68 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "https://enmasterx.ftp.sh",  // Allow your domain
-        methods: ["GET", "POST"],           // Methods allowed
-        allowedHeaders: ["Content-Type"]    // Headers allowed
+        origin: "https://enmasterx.ftp.sh",
+        methods: ["GET", "POST"],
+        allowedHeaders: ["Content-Type"]
     }
 });
 
-// In-memory store for messages
+// Serve static files (e.g., HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// In-memory chat history
 let messages = [];
+
+// In-memory credentials map (password → username)
+let credentials = {
+    "7482broncos": "Burkes"
+};
+
+// Authentication map (socket.id → username)
+let authenticatedUsers = {};
 
 io.on('connection', (socket) => {
     console.log('A user connected');
-    
-    // Send all previous messages to the new user
-    socket.emit('previousMessages', messages);
 
-    // Handle incoming messages and emit them back to all connected clients
+    socket.on('authenticate', (password, callback) => {
+        if (credentials[password]) {
+            authenticatedUsers[socket.id] = credentials[password];
+            callback({ success: true, username: credentials[password] });
+        } else {
+            callback({ success: false });
+        }
+    });
+
     socket.on('message', (msg) => {
-        console.log("Received message:", msg);
-        messages.push(msg); // Store the message
-        io.emit('message', msg); // Emit the message to all clients
+        const username = authenticatedUsers[socket.id];
+        if (!username) return; // Ignore unauthenticated users
+
+        messages.push(msg);
+        io.emit('message', msg);
+    });
+
+    socket.on('requestMessages', () => {
+        socket.emit('previousMessages', messages);
     });
 
     socket.on('disconnect', () => {
         console.log('User disconnected');
+        delete authenticatedUsers[socket.id];
     });
 });
 
-// Start the server on the desired port (use environment variable or 3000)
+// Optional admin.html route (if you create an admin page)
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
