@@ -34,15 +34,19 @@ let userCredentials = {
 // Authentication map (socket.id → username)
 let authenticatedUsers = {};
 
+// Ensure the messages file exists
+if (!fs.existsSync(messagesFilePath)) {
+    // Create an empty file if it doesn't exist
+    fs.writeFileSync(messagesFilePath, JSON.stringify([]));
+}
+
 // Read stored messages from file (if any)
 let messages = [];
-if (fs.existsSync(messagesFilePath)) {
+try {
     const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
-    try {
-        messages = JSON.parse(storedMessages);
-    } catch (error) {
-        console.error('Error reading messages from file:', error);
-    }
+    messages = JSON.parse(storedMessages);
+} catch (error) {
+    console.error('Error reading messages from file:', error);
 }
 
 io.on('connection', (socket) => {
@@ -87,8 +91,12 @@ io.on('connection', (socket) => {
         }
 
         // Save messages to the file
-        console.log('Saving messages to file:', messages);
-        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
+        try {
+            console.log('Saving messages to file:', messages);
+            fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
+        } catch (error) {
+            console.error('Error saving messages to file:', error);
+        }
 
         // Emit the new message to all clients
         io.emit('message', msg);
@@ -127,8 +135,12 @@ io.on('connection', (socket) => {
 // 🔁 Clear messages every day at midnight
 cron.schedule('0 0 * * *', () => {
     messages = [];
-    fs.writeFileSync(messagesFilePath, JSON.stringify(messages));  // Clear the file as well
-    console.log('Chat messages cleared at midnight.');
+    try {
+        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));  // Clear the file as well
+        console.log('Chat messages cleared at midnight.');
+    } catch (error) {
+        console.error('Error clearing messages file:', error);
+    }
 });
 
 // Start server
