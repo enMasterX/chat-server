@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const cron = require('node-cron');  // <-- added for scheduling
 
 const app = express();
 const server = http.createServer(app);
@@ -57,9 +58,15 @@ io.on('connection', (socket) => {
     });
 });
 
-// Optional admin.html route (if you create an admin page)
+// Admin page route (if admin.html exists in /public)
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// 🔁 Clear messages every day at midnight
+cron.schedule('0 0 * * *', () => {
+    messages = [];
+    console.log('Chat messages cleared at midnight.');
 });
 
 // Start server
