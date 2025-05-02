@@ -38,13 +38,18 @@ let authenticatedUsers = {};
 let messages = [];
 if (fs.existsSync(messagesFilePath)) {
     const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
-    messages = JSON.parse(storedMessages);
+    try {
+        messages = JSON.parse(storedMessages);
+    } catch (error) {
+        console.error('Error reading messages from file:', error);
+    }
 }
 
 io.on('connection', (socket) => {
-    console.log('A user connected');
-    
+    console.log('A user connected: ' + socket.id);
+
     // Send previous messages when a new user connects
+    console.log('Sending previous messages:', messages);
     socket.emit('previousMessages', messages);
 
     // Handle admin authentication
@@ -82,6 +87,7 @@ io.on('connection', (socket) => {
         }
 
         // Save messages to the file
+        console.log('Saving messages to file:', messages);
         fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
 
         // Emit the new message to all clients
@@ -89,11 +95,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestMessages', () => {
+        console.log(`Sending previous messages to ${socket.id}`);
         socket.emit('previousMessages', messages);
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected');
+        console.log('User disconnected: ' + socket.id);
         delete authenticatedUsers[socket.id];
     });
 });
