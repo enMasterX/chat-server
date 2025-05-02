@@ -3,8 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cron = require('node-cron');
-const mongoose = require('mongoose');
-const fs = require('fs'); // Import fs module to read/write files
+const fs = require('fs');  // Import fs module to read/write files
 
 const app = express();
 const server = http.createServer(app);
@@ -45,14 +44,6 @@ if (fs.existsSync(messagesFilePath)) {
         console.error('Error reading messages from file:', error);
     }
 }
-
-// Step 3 - Connect to MongoDB using connection URI
-const mongoUri = 'mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/chatdb?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(mongoUri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 io.on('connection', (socket) => {
     console.log('A user connected: ' + socket.id);
