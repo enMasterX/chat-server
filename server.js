@@ -20,9 +20,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In-memory chat history
 let messages = [];
 
-// In-memory credentials map (password → username)
-let credentials = {
+// In-memory credentials map for admin and global chat
+let adminCredentials = {
     "7482broncos": "Burkes"
+};
+
+// Store user credentials for global chat, initialized with a default user
+let userCredentials = {
+    "user1": "password1"  // Initial user (can be changed by admin)
 };
 
 // Authentication map (socket.id → username)
@@ -31,15 +36,17 @@ let authenticatedUsers = {};
 io.on('connection', (socket) => {
     console.log('A user connected');
 
-    socket.on('authenticate', (password, callback) => {
-        if (credentials[password]) {
-            authenticatedUsers[socket.id] = credentials[password];
-            callback({ success: true, username: credentials[password] });
+    // Handle user authentication for the global chat
+    socket.on('authenticateChatUser', (username, password, callback) => {
+        if (userCredentials[username] && userCredentials[username] === password) {
+            authenticatedUsers[socket.id] = username;
+            callback({ success: true, username: username });
         } else {
             callback({ success: false });
         }
     });
 
+    // Handle incoming messages and emit them back to all connected clients
     socket.on('message', (msg) => {
         const username = authenticatedUsers[socket.id];
         if (!username) return; // Ignore unauthenticated users
@@ -61,6 +68,20 @@ io.on('connection', (socket) => {
 // Admin page route (if admin.html exists in /public)
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Handle adding new users through the admin panel
+io.on('connection', (socket) => {
+    socket.on('add-user', (data) => {
+        const { user, pwd } = data;
+        if (user && pwd) {
+            userCredentials[user] = pwd;  // Add new user to credentials map
+            console.log(`User ${user} added with password ${pwd}`);
+            socket.emit('userAdded', { success: true, user });
+        } else {
+            socket.emit('userAdded', { success: false });
+        }
+    });
 });
 
 // 🔁 Clear messages every day at midnight
