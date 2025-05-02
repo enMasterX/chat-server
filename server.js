@@ -37,8 +37,17 @@ io.on('connection', (socket) => {
     console.log('A user connected');
 
     // Handle user authentication for the global chat
-    socket.on('authenticateChatUser', (username, password, callback) => {
-        if (userCredentials[username] && userCredentials[username] === password) {
+    socket.on('authenticateChatUser', (password, callback) => {
+        // Find the username associated with the password
+        let username = null;
+        for (let user in userCredentials) {
+            if (userCredentials[user] === password) {
+                username = user;
+                break;
+            }
+        }
+
+        if (username) {
             authenticatedUsers[socket.id] = username;
             callback({ success: true, username: username });
         } else {
@@ -51,8 +60,10 @@ io.on('connection', (socket) => {
         const username = authenticatedUsers[socket.id];
         if (!username) return; // Ignore unauthenticated users
 
-        messages.push(msg);
-        io.emit('message', msg);
+        // Attach username to the message
+        const fullMessage = `${username}: ${msg}`;
+        messages.push(fullMessage);
+        io.emit('message', fullMessage);
     });
 
     socket.on('requestMessages', () => {
