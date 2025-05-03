@@ -124,15 +124,13 @@ io.on('connection', (socket) => {
 
     socket.on('get-users', () => {
         // Fetch and sort users from MongoDB
-        userCredentialsCollection.find().toArray((err, users) => {
+        userCredentialsCollection.find().sort({ username: 1 }).toArray((err, users) => {
             if (err) {
                 console.error('Error fetching users:', err);
                 socket.emit('userList', []); // Send an empty array in case of error
             } else {
                 console.log('Fetched users:', users); // Add this log for debugging
-                // Sort users alphabetically
-                const sortedUsers = users.sort((a, b) => a.username.localeCompare(b.username));
-                socket.emit('userList', sortedUsers); // Send sorted list to client
+                socket.emit('userList', users); // Send sorted list to client
             }
         });
     });
