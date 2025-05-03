@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const messagesFilePath = path.join(__dirname, 'messages.json');
 let adminCredentials = { "7482broncos": "Burkes" };
 let authenticatedUsers = {};
-let userCredentials = {}; // ✅ Added this line
+let userCredentials = {}; // ✅ Keep this in memory for use
 
 // MongoDB setup
 const mongoUri = "mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -33,20 +33,26 @@ MongoClient.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true 
         userCredentialsCollection = db.collection('userCredentials');
         console.log("Connected to MongoDB");
 
-        // Initialize user credentials from MongoDB
-        userCredentialsCollection.find().toArray((err, users) => {
-            if (err) {
-                console.error('Error fetching users:', err);
-            } else {
-                users.forEach(user => {
-                    userCredentials[user.username] = user.password;
-                });
-            }
-        });
+        // Load initial user credentials from MongoDB into the in-memory object
+        loadUserCredentials();
     })
     .catch(error => {
         console.error("Error connecting to MongoDB:", error);
     });
+
+// Function to load user credentials from MongoDB
+function loadUserCredentials() {
+    userCredentialsCollection.find().toArray((err, users) => {
+        if (err) {
+            console.error('Error fetching users:', err);
+        } else {
+            // Update the in-memory userCredentials object
+            users.forEach(user => {
+                userCredentials[user.username] = user.password;
+            });
+        }
+    });
+}
 
 let messages = [];
 try {
@@ -101,9 +107,10 @@ io.on('connection', (socket) => {
 
     socket.on('add-user', ({ user, pwd }) => {
         if (user && pwd) {
+            // Save to MongoDB
             userCredentialsCollection.insertOne({ username: user, password: pwd })
                 .then(() => {
-                    userCredentials[user] = pwd;
+                    userCredentials[user] = pwd; // Update in-memory object
                     socket.emit('userAdded', { success: true, user });
                 })
                 .catch(err => {
@@ -116,10 +123,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('get-users', () => {
-        // Sort the users alphabetically by username
+        // Ensure data is available from MongoDB before sending
         const sortedUsers = Object.keys(userCredentials).sort();
         const sortedUserList = sortedUsers.map(username => ({ username, password: userCredentials[username] }));
-        socket.emit('userList', sortedUserList); // Send the sorted list to the client
+        socket.emit('userList', sortedUserList);
     });
 
     socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
