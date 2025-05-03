@@ -106,6 +106,7 @@ io.on('connection', (socket) => {
         socket.emit('previousMessages', messages);
     });
 
+    // Added 'add-user' event handler
     socket.on('add-user', ({ user, pwd }) => {
         console.log(`Add user attempt: ${user}`);
         if (user && pwd) {
@@ -125,13 +126,14 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Added 'get-users' event handler
     socket.on('get-users', () => {
         console.log('Received "get-users" event from client:', socket.id);
 
         userCredentialsCollection.find().sort({ username: 1 }).toArray((err, users) => {
             if (err) {
                 console.error('Error fetching users from MongoDB:', err);
-                socket.emit('userList', []);
+                socket.emit('userList', []);  // Send an empty list if error occurs
             } else {
                 // Log the raw result from MongoDB
                 console.log('MongoDB query results:', users);
@@ -144,6 +146,7 @@ io.on('connection', (socket) => {
                 } else {
                     console.log('No users found in MongoDB.');
                 }
+
                 socket.emit('userList', users);
             }
         });
