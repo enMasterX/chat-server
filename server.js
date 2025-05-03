@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const path = require('path');
 const cron = require('node-cron');
 const fs = require('fs');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,24 +19,33 @@ const io = socketIo(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const messagesFilePath = path.join(__dirname, 'messages.json');
-const credentialsFilePath = path.join(__dirname, 'userCredentials.json'); // Path to store user credentials
-
 let adminCredentials = { "7482broncos": "Burkes" };
-let userCredentials = {}; // Load user credentials from file
 let authenticatedUsers = {};
 
-if (!fs.existsSync(messagesFilePath)) {
-    fs.writeFileSync(messagesFilePath, JSON.stringify([]));
-}
+// MongoDB setup
+const mongoUri = "YOUR_MONGODB_URI"; // Replace with your MongoDB URI
+let db, userCredentialsCollection;
 
-if (fs.existsSync(credentialsFilePath)) {
-    try {
-        const storedCredentials = fs.readFileSync(credentialsFilePath, 'utf-8');
-        userCredentials = JSON.parse(storedCredentials); // Load user credentials from the file
-    } catch (error) {
-        console.error('Error reading user credentials from file:', error);
-    }
-}
+MongoClient.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(client => {
+        db = client.db();
+        userCredentialsCollection = db.collection('userCredentials');
+        console.log("Connected to MongoDB");
+
+        // Initialize user credentials from MongoDB
+        userCredentialsCollection.find().toArray((err, users) => {
+            if (err) {
+                console.error('Error fetching users:', err);
+            } else {
+                users.forEach(user => {
+                    userCredentials[user.username] = user.password;
+                });
+            }
+        });
+    })
+    .catch(error => {
+        console.error("Error connecting to MongoDB:", error);
+    });
 
 let messages = [];
 try {
@@ -45,7 +55,6 @@ try {
     console.error('Error reading messages from file:', error);
 }
 
-// ✅ DO NOT PLACE THIS BEFORE io IS DEFINED!
 io.on('connection', (socket) => {
     console.log('A user connected: ' + socket.id);
     socket.emit('previousMessages', messages);
@@ -91,28 +100,23 @@ io.on('connection', (socket) => {
 
     socket.on('add-user', ({ user, pwd }) => {
         if (user && pwd) {
-            userCredentials[user] = pwd;
-            // Save the updated credentials to the file
-            try {
-                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
-                socket.emit('userAdded', { success: true, user });
-            } catch (error) {
-                console.error('Error saving user credentials to file:', error);
-                socket.emit('userAdded', { success: false });
-            }
+            // Save to MongoDB
+            userCredentialsCollection.insertOne({ username: user, password: pwd })
+                .then(() => {
+                    userCredentials[user] = pwd;
+                    socket.emit('userAdded', { success: true, user });
+                })
+                .catch(err => {
+                    console.error('Error adding user to MongoDB:', err);
+                    socket.emit('userAdded', { success: false });
+                });
         } else {
             socket.emit('userAdded', { success: false });
         }
     });
 
     socket.on('get-users', () => {
-        // Sort users alphabetically by username
-        const sortedUsers = Object.keys(userCredentials).sort().reduce((obj, key) => {
-            obj[key] = userCredentials[key];
-            return obj;
-        }, {});
-
-        socket.emit('userList', sortedUsers);
+        socket.emit('userList', userCredentials);
     });
 
     socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
@@ -122,16 +126,18 @@ io.on('connection', (socket) => {
             newPassword &&
             !(newUsername !== oldUsername && userCredentials[newUsername])
         ) {
-            delete userCredentials[oldUsername];
-            userCredentials[newUsername] = newPassword;
-            // Save the updated credentials to the file
-            try {
-                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
+            userCredentialsCollection.updateOne({ username: oldUsername }, {
+                $set: { username: newUsername, password: newPassword }
+            })
+            .then(() => {
+                delete userCredentials[oldUsername];
+                userCredentials[newUsername] = newPassword;
                 socket.emit('userUpdated', { success: true, username: newUsername });
-            } catch (error) {
-                console.error('Error saving user credentials to file:', error);
+            })
+            .catch(err => {
+                console.error('Error updating user in MongoDB:', err);
                 socket.emit('userUpdated', { success: false });
-            }
+            });
         } else {
             socket.emit('userUpdated', { success: false });
         }
@@ -139,15 +145,15 @@ io.on('connection', (socket) => {
 
     socket.on('delete-user', (username) => {
         if (username in userCredentials) {
-            delete userCredentials[username];
-            // Save the updated credentials to the file
-            try {
-                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
-                socket.emit('userDeleted', { success: true, username });
-            } catch (error) {
-                console.error('Error saving user credentials to file:', error);
-                socket.emit('userDeleted', { success: false });
-            }
+            userCredentialsCollection.deleteOne({ username })
+                .then(() => {
+                    delete userCredentials[username];
+                    socket.emit('userDeleted', { success: true, username });
+                })
+                .catch(err => {
+                    console.error('Error deleting user from MongoDB:', err);
+                    socket.emit('userDeleted', { success: false });
+                });
         } else {
             socket.emit('userDeleted', { success: false });
         }
