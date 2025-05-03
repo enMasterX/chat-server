@@ -127,11 +127,15 @@ io.on('connection', (socket) => {
 
     socket.on('get-users', () => {
         console.log('Received "get-users" event from client:', socket.id);
+
         userCredentialsCollection.find().sort({ username: 1 }).toArray((err, users) => {
             if (err) {
                 console.error('Error fetching users from MongoDB:', err);
                 socket.emit('userList', []);
             } else {
+                // Log the raw result from MongoDB
+                console.log('MongoDB query results:', users);
+
                 console.log(`Found ${users.length} users in MongoDB.`);
                 if (users.length > 0) {
                     users.forEach((user, index) => {
