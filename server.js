@@ -1,3 +1,40 @@
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const path = require('path');
+const cron = require('node-cron');
+const fs = require('fs');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: "https://enmasterx.ftp.sh",
+        methods: ["GET", "POST"],
+        allowedHeaders: ["Content-Type"]
+    }
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+const messagesFilePath = path.join(__dirname, 'messages.json');
+let adminCredentials = { "7482broncos": "Burkes" };
+let userCredentials = { "user1": "password1" };
+let authenticatedUsers = {};
+
+if (!fs.existsSync(messagesFilePath)) {
+    fs.writeFileSync(messagesFilePath, JSON.stringify([]));
+}
+
+let messages = [];
+try {
+    const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
+    messages = JSON.parse(storedMessages);
+} catch (error) {
+    console.error('Error reading messages from file:', error);
+}
+
+// ✅ DO NOT PLACE THIS BEFORE io IS DEFINED!
 io.on('connection', (socket) => {
     console.log('A user connected: ' + socket.id);
     socket.emit('previousMessages', messages);
@@ -27,6 +64,7 @@ io.on('connection', (socket) => {
 
         messages.push(msg);
         if (messages.length > 100) messages.shift();
+
         try {
             fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
         } catch (error) {
@@ -81,4 +119,23 @@ io.on('connection', (socket) => {
         console.log('User disconnected: ' + socket.id);
         delete authenticatedUsers[socket.id];
     });
+});
+
+cron.schedule('0 0 * * *', () => {
+    messages = [];
+    try {
+        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
+        console.log('Chat messages cleared at midnight.');
+    } catch (error) {
+        console.error('Error clearing messages file:', error);
+    }
+});
+
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
 });
