@@ -123,16 +123,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('get-users', () => {
-        // Ensure data is available from MongoDB before sending
+        // Fetch and sort users from MongoDB
         userCredentialsCollection.find().toArray((err, users) => {
             if (err) {
                 console.error('Error fetching users:', err);
-                return;
+                socket.emit('userList', []); // Send an empty array in case of error
+            } else {
+                console.log('Fetched users:', users); // Add this log for debugging
+                // Sort users alphabetically
+                const sortedUsers = users.sort((a, b) => a.username.localeCompare(b.username));
+                socket.emit('userList', sortedUsers); // Send sorted list to client
             }
-
-            // Sort users alphabetically
-            const sortedUsers = users.sort((a, b) => a.username.localeCompare(b.username));
-            socket.emit('userList', sortedUsers);
         });
     });
 
