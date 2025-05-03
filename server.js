@@ -124,9 +124,16 @@ io.on('connection', (socket) => {
 
     socket.on('get-users', () => {
         // Ensure data is available from MongoDB before sending
-        const sortedUsers = Object.keys(userCredentials).sort();
-        const sortedUserList = sortedUsers.map(username => ({ username, password: userCredentials[username] }));
-        socket.emit('userList', sortedUserList);
+        userCredentialsCollection.find().toArray((err, users) => {
+            if (err) {
+                console.error('Error fetching users:', err);
+                return;
+            }
+
+            // Sort users alphabetically
+            const sortedUsers = users.sort((a, b) => a.username.localeCompare(b.username));
+            socket.emit('userList', sortedUsers);
+        });
     });
 
     socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
