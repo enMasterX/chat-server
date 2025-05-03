@@ -18,12 +18,23 @@ const io = socketIo(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const messagesFilePath = path.join(__dirname, 'messages.json');
+const credentialsFilePath = path.join(__dirname, 'userCredentials.json'); // Path to store user credentials
+
 let adminCredentials = { "7482broncos": "Burkes" };
-let userCredentials = { "user1": "password1" };
+let userCredentials = {}; // Load user credentials from file
 let authenticatedUsers = {};
 
 if (!fs.existsSync(messagesFilePath)) {
     fs.writeFileSync(messagesFilePath, JSON.stringify([]));
+}
+
+if (fs.existsSync(credentialsFilePath)) {
+    try {
+        const storedCredentials = fs.readFileSync(credentialsFilePath, 'utf-8');
+        userCredentials = JSON.parse(storedCredentials); // Load user credentials from the file
+    } catch (error) {
+        console.error('Error reading user credentials from file:', error);
+    }
 }
 
 let messages = [];
@@ -81,13 +92,19 @@ io.on('connection', (socket) => {
     socket.on('add-user', ({ user, pwd }) => {
         if (user && pwd) {
             userCredentials[user] = pwd;
-            socket.emit('userAdded', { success: true, user });
+            // Save the updated credentials to the file
+            try {
+                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
+                socket.emit('userAdded', { success: true, user });
+            } catch (error) {
+                console.error('Error saving user credentials to file:', error);
+                socket.emit('userAdded', { success: false });
+            }
         } else {
             socket.emit('userAdded', { success: false });
         }
     });
 
-    // Sort user credentials alphabetically and send the sorted list
     socket.on('get-users', () => {
         // Sort users alphabetically by username
         const sortedUsers = Object.keys(userCredentials).sort().reduce((obj, key) => {
@@ -107,7 +124,14 @@ io.on('connection', (socket) => {
         ) {
             delete userCredentials[oldUsername];
             userCredentials[newUsername] = newPassword;
-            socket.emit('userUpdated', { success: true, username: newUsername });
+            // Save the updated credentials to the file
+            try {
+                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
+                socket.emit('userUpdated', { success: true, username: newUsername });
+            } catch (error) {
+                console.error('Error saving user credentials to file:', error);
+                socket.emit('userUpdated', { success: false });
+            }
         } else {
             socket.emit('userUpdated', { success: false });
         }
@@ -116,7 +140,14 @@ io.on('connection', (socket) => {
     socket.on('delete-user', (username) => {
         if (username in userCredentials) {
             delete userCredentials[username];
-            socket.emit('userDeleted', { success: true, username });
+            // Save the updated credentials to the file
+            try {
+                fs.writeFileSync(credentialsFilePath, JSON.stringify(userCredentials, null, 2));
+                socket.emit('userDeleted', { success: true, username });
+            } catch (error) {
+                console.error('Error saving user credentials to file:', error);
+                socket.emit('userDeleted', { success: false });
+            }
         } else {
             socket.emit('userDeleted', { success: false });
         }
