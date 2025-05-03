@@ -21,9 +21,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 const messagesFilePath = path.join(__dirname, 'messages.json');
 let adminCredentials = { "7482broncos": "Burkes" };
 let authenticatedUsers = {};
+let userCredentials = {}; // ✅ Added this line
 
 // MongoDB setup
-const mongoUri = "mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"; // Replace with your MongoDB URI
+const mongoUri = "mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 let db, userCredentialsCollection;
 
 MongoClient.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -100,7 +101,6 @@ io.on('connection', (socket) => {
 
     socket.on('add-user', ({ user, pwd }) => {
         if (user && pwd) {
-            // Save to MongoDB
             userCredentialsCollection.insertOne({ username: user, password: pwd })
                 .then(() => {
                     userCredentials[user] = pwd;
