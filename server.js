@@ -3,7 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cron = require('node-cron');
-const fs = require('fs');  // Import fs module to read/write files
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,32 +15,24 @@ const io = socketIo(server, {
     }
 });
 
-// Serve static files (e.g., HTML, CSS, JS)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// File path to store messages
 const messagesFilePath = path.join(__dirname, 'messages.json');
 
-// In-memory credentials map for admin and global chat
 let adminCredentials = {
     "7482broncos": "Burkes"
 };
 
-// Store user credentials for global chat, initialized with a default user
 let userCredentials = {
-    "user1": "password1"  // Initial user (can be changed by admin)
+    "user1": "password1"
 };
 
-// Authentication map (socket.id → username)
 let authenticatedUsers = {};
 
-// Ensure the messages file exists
 if (!fs.existsSync(messagesFilePath)) {
-    // Create an empty file if it doesn't exist
     fs.writeFileSync(messagesFilePath, JSON.stringify([]));
 }
 
-// Read stored messages from file (if any)
 let messages = [];
 try {
     const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
@@ -52,11 +44,10 @@ try {
 io.on('connection', (socket) => {
     console.log('A user connected: ' + socket.id);
 
-    // Send previous messages when a new user connects
     console.log('Sending previous messages:', messages);
-    socket.emit('previousMessages', messages); // Send all previous messages to new user
+    socket.emit('previousMessages', messages);
 
-    // Handle admin authentication
+    // Admin authentication
     socket.on('authenticate', (password, callback) => {
         console.log(`Admin authentication attempt with password: ${password}`);
         if (adminCredentials[password]) {
@@ -67,7 +58,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle user authentication for global chat
+    // Chat user authentication
     socket.on('authenticateChatUser', (username, password, callback) => {
         if (userCredentials[username] && userCredentials[username] === password) {
             authenticatedUsers[socket.id] = username;
@@ -77,20 +68,50 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle incoming messages
+    // Handle adding a new user
+    socket.on('add-user', ({ user, pwd }) => {
+        if (user && pwd) {
+            userCredentials[user] = pwd;
+            console.log(`User ${user} added with password ${pwd}`);
+            socket.emit('userAdded', { success: true, user });
+        } else {
+            socket.emit('userAdded', { success: false });
+        }
+    });
+
+    // Send all users to admin
+    socket.on('get-users', () => {
+        socket.emit('userList', userCredentials);
+    });
+
+    // Edit a user's password
+    socket.on('edit-user', ({ username, newPassword }) => {
+        if (userCredentials[username]) {
+            userCredentials[username] = newPassword;
+            socket.emit('userUpdated', { success: true, username });
+        } else {
+            socket.emit('userUpdated', { success: false });
+        }
+    });
+
+    // Delete a user
+    socket.on('delete-user', (username) => {
+        if (userCredentials[username]) {
+            delete userCredentials[username];
+            socket.emit('userDeleted', { success: true, username });
+        } else {
+            socket.emit('userDeleted', { success: false });
+        }
+    });
+
+    // Handle messages
     socket.on('message', (msg) => {
         const username = authenticatedUsers[socket.id];
-        if (!username) return;  // Ignore unauthenticated users
+        if (!username) return;
 
-        // Push the new message to the history
         messages.push(msg);
+        if (messages.length > 100) messages.shift();
 
-        // Cap the history size
-        if (messages.length > 100) {
-            messages.shift();  // Remove the oldest message if we exceed the limit
-        }
-
-        // Save messages to the file
         try {
             console.log('Saving messages to file:', messages);
             fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
@@ -98,13 +119,12 @@ io.on('connection', (socket) => {
             console.error('Error saving messages to file:', error);
         }
 
-        // Emit the new message to all clients
         io.emit('message', msg);
     });
 
     socket.on('requestMessages', () => {
         console.log(`Sending previous messages to ${socket.id}`);
-        socket.emit('previousMessages', messages); // Ensure the client gets previous messages when requested
+        socket.emit('previousMessages', messages);
     });
 
     socket.on('disconnect', () => {
@@ -113,37 +133,20 @@ io.on('connection', (socket) => {
     });
 });
 
-// Admin page route (if admin.html exists in /public)
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// Handle adding new users through the admin panel
-io.on('connection', (socket) => {
-    socket.on('add-user', (data) => {
-        const { user, pwd } = data;
-        if (user && pwd) {
-            userCredentials[user] = pwd;  // Add new user to credentials map
-            console.log(`User ${user} added with password ${pwd}`);
-            socket.emit('userAdded', { success: true, user });
-        } else {
-            socket.emit('userAdded', { success: false });
-        }
-    });
-});
-
-// 🔁 Clear messages every day at midnight
 cron.schedule('0 0 * * *', () => {
     messages = [];
     try {
-        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));  // Clear the file as well
+        fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
         console.log('Chat messages cleared at midnight.');
     } catch (error) {
         console.error('Error clearing messages file:', error);
     }
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
