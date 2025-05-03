@@ -132,10 +132,14 @@ io.on('connection', (socket) => {
                 console.error('Error fetching users from MongoDB:', err);
                 socket.emit('userList', []);
             } else {
-                console.log(`Sending ${users.length} users to client ${socket.id}`);
-                users.forEach((user, index) => {
-                    console.log(`User ${index + 1}:`, user);
-                });
+                console.log(`Found ${users.length} users in MongoDB.`);
+                if (users.length > 0) {
+                    users.forEach((user, index) => {
+                        console.log(`User ${index + 1}: ${user.username}`);
+                    });
+                } else {
+                    console.log('No users found in MongoDB.');
+                }
                 socket.emit('userList', users);
             }
         });
