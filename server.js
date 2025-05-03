@@ -23,7 +23,7 @@ let adminCredentials = { "7482broncos": "Burkes" };
 let authenticatedUsers = {};
 
 // MongoDB setup
-const mongoUri = "YOUR_MONGODB_URI"; // Replace with your MongoDB URI
+const mongoUri = "mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"; // Replace with your MongoDB URI
 let db, userCredentialsCollection;
 
 MongoClient.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
