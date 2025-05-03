@@ -87,8 +87,15 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Sort user credentials alphabetically and send the sorted list
     socket.on('get-users', () => {
-        socket.emit('userList', userCredentials);
+        // Sort users alphabetically by username
+        const sortedUsers = Object.keys(userCredentials).sort().reduce((obj, key) => {
+            obj[key] = userCredentials[key];
+            return obj;
+        }, {});
+
+        socket.emit('userList', sortedUsers);
     });
 
     socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
