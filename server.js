@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const messagesFilePath = path.join(__dirname, 'messages.json');
 let adminCredentials = { "7482broncos": "Burkes" };
 let authenticatedUsers = {};
-let userCredentials = {}; // ✅ Keep this in memory for use
+let userCredentials = {};
 
 // MongoDB setup
 const mongoUri = "mongodb+srv://chatuser:chatuser@cluster0.k1hbygu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -33,23 +33,22 @@ MongoClient.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true 
         userCredentialsCollection = db.collection('userCredentials');
         console.log("Connected to MongoDB");
 
-        // Load initial user credentials from MongoDB into the in-memory object
         loadUserCredentials();
     })
     .catch(error => {
         console.error("Error connecting to MongoDB:", error);
     });
 
-// Function to load user credentials from MongoDB
+// Load user credentials from DB to memory
 function loadUserCredentials() {
     userCredentialsCollection.find().toArray((err, users) => {
         if (err) {
             console.error('Error fetching users:', err);
         } else {
-            // Update the in-memory userCredentials object
             users.forEach(user => {
                 userCredentials[user.username] = user.password;
             });
+            console.log('User credentials loaded into memory:', Object.keys(userCredentials));
         }
     });
 }
@@ -77,6 +76,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('authenticateChatUser', (username, password, callback) => {
+        console.log(`Chat user authentication attempt: ${username}`);
         if (userCredentials[username] && userCredentials[username] === password) {
             authenticatedUsers[socket.id] = username;
             callback({ success: true, username: username });
@@ -102,40 +102,47 @@ io.on('connection', (socket) => {
     });
 
     socket.on('requestMessages', () => {
+        console.log('Client requested messages');
         socket.emit('previousMessages', messages);
     });
 
     socket.on('add-user', ({ user, pwd }) => {
+        console.log(`Add user attempt: ${user}`);
         if (user && pwd) {
-            // Save to MongoDB
             userCredentialsCollection.insertOne({ username: user, password: pwd })
                 .then(() => {
-                    userCredentials[user] = pwd; // Update in-memory object
+                    userCredentials[user] = pwd;
                     socket.emit('userAdded', { success: true, user });
+                    console.log(`User added: ${user}`);
                 })
                 .catch(err => {
                     console.error('Error adding user to MongoDB:', err);
                     socket.emit('userAdded', { success: false });
                 });
         } else {
+            console.log('Add user failed: missing username or password');
             socket.emit('userAdded', { success: false });
         }
     });
 
     socket.on('get-users', () => {
-        // Fetch and sort users from MongoDB
+        console.log('Received "get-users" event from client:', socket.id);
         userCredentialsCollection.find().sort({ username: 1 }).toArray((err, users) => {
             if (err) {
-                console.error('Error fetching users:', err);
-                socket.emit('userList', []); // Send an empty array in case of error
+                console.error('Error fetching users from MongoDB:', err);
+                socket.emit('userList', []);
             } else {
-                console.log('Fetched users:', users); // Add this log for debugging
-                socket.emit('userList', users); // Send sorted list to client
+                console.log(`Sending ${users.length} users to client ${socket.id}`);
+                users.forEach((user, index) => {
+                    console.log(`User ${index + 1}:`, user);
+                });
+                socket.emit('userList', users);
             }
         });
     });
 
     socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
+        console.log(`Edit user attempt: ${oldUsername} -> ${newUsername}`);
         if (
             oldUsername in userCredentials &&
             newUsername &&
@@ -149,28 +156,33 @@ io.on('connection', (socket) => {
                 delete userCredentials[oldUsername];
                 userCredentials[newUsername] = newPassword;
                 socket.emit('userUpdated', { success: true, username: newUsername });
+                console.log(`User updated: ${oldUsername} -> ${newUsername}`);
             })
             .catch(err => {
                 console.error('Error updating user in MongoDB:', err);
                 socket.emit('userUpdated', { success: false });
             });
         } else {
+            console.log('Edit user failed: invalid input or username taken');
             socket.emit('userUpdated', { success: false });
         }
     });
 
     socket.on('delete-user', (username) => {
+        console.log(`Delete user attempt: ${username}`);
         if (username in userCredentials) {
             userCredentialsCollection.deleteOne({ username })
                 .then(() => {
                     delete userCredentials[username];
                     socket.emit('userDeleted', { success: true, username });
+                    console.log(`User deleted: ${username}`);
                 })
                 .catch(err => {
                     console.error('Error deleting user from MongoDB:', err);
                     socket.emit('userDeleted', { success: false });
                 });
         } else {
+            console.log('Delete user failed: user not found');
             socket.emit('userDeleted', { success: false });
         }
     });
