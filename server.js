@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "https://enmasterx.ftp.sh",
+        origin: "https://unknown.ftp.sh",
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type"]
     }
