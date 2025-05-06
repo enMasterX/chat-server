@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const path = require('path');
 const cron = require('node-cron');
 const fs = require('fs');
+const bcrypt = require('bcrypt');  // Import bcrypt
 
 const app = express();
 const server = http.createServer(app);
@@ -23,20 +24,22 @@ let adminCredentials = { "7482broncos": "Burkes" };
 let authenticatedUsers = {};
 let userCredentials = loadUserCredentials();
 
+// Load user credentials from users.json
 function loadUserCredentials() {
     try {
         if (fs.existsSync(usersFilePath)) {
             const data = fs.readFileSync(usersFilePath, 'utf-8');
-            return JSON.parse(data);
+            return data ? JSON.parse(data) : {};  // Return an empty object if the file is empty
         } else {
-            return {};
+            return {};  // Return empty object if the file doesn't exist
         }
     } catch (err) {
         console.error('Error loading users.json:', err);
-        return {};
+        return {};  // Return empty object if an error occurs
     }
 }
 
+// Save updated user credentials back to users.json
 function saveUserCredentials() {
     try {
         fs.writeFileSync(usersFilePath, JSON.stringify(userCredentials, null, 2));
@@ -45,6 +48,7 @@ function saveUserCredentials() {
     }
 }
 
+// Load messages from messages.json
 let messages = [];
 try {
     const storedMessages = fs.readFileSync(messagesFilePath, 'utf-8');
@@ -57,6 +61,7 @@ io.on('connection', (socket) => {
     console.log('A user connected: ' + socket.id);
     socket.emit('previousMessages', messages);
 
+    // Admin authentication
     socket.on('authenticate', (password, callback) => {
         if (adminCredentials[password]) {
             authenticatedUsers[socket.id] = adminCredentials[password];
@@ -66,38 +71,48 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('authenticateChatUser', (username, password, callback) => {
-        if (userCredentials[username] && userCredentials[username] === password) {
-            authenticatedUsers[socket.id] = username;
-            callback({ success: true, username: username });
-        } else {
-            callback({ success: false });
+    // Chat user authentication with bcrypt for password comparison
+    socket.on('authenticateChatUser', async (username, password, callback) => {
+        // Check if the user exists and compare hashed password
+        if (userCredentials[username]) {
+            const isPasswordCorrect = await bcrypt.compare(password, userCredentials[username]);
+            if (isPasswordCorrect) {
+                authenticatedUsers[socket.id] = username;
+                callback({ success: true, username: username });
+                return;
+            }
         }
+        callback({ success: false });
     });
 
+    // Handle incoming messages
     socket.on('message', (msg) => {
         const username = authenticatedUsers[socket.id];
-        if (!username) return;
+        if (!username) return;  // Ignore message if the user is not authenticated
 
         messages.push(msg);
-        if (messages.length > 100) messages.shift();
+        if (messages.length > 100) messages.shift();  // Limit to 100 messages
 
+        // Try to save messages to file
         try {
             fs.writeFileSync(messagesFilePath, JSON.stringify(messages));
         } catch (error) {
             console.error('Error saving messages to file:', error);
         }
 
-        io.emit('message', msg);
+        io.emit('message', msg);  // Broadcast new message to all connected clients
     });
 
+    // Handle request for previous messages
     socket.on('requestMessages', () => {
         socket.emit('previousMessages', messages);
     });
 
-    socket.on('add-user', ({ user, pwd }) => {
+    // Add a new user (hash the password using bcrypt)
+    socket.on('add-user', async ({ user, pwd }) => {
         if (user && pwd && !(user in userCredentials)) {
-            userCredentials[user] = pwd;
+            const hashedPassword = await bcrypt.hash(pwd, 10);  // Hash the password
+            userCredentials[user] = hashedPassword;
             saveUserCredentials();
             socket.emit('userAdded', { success: true, user });
         } else {
@@ -105,20 +120,23 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Get the list of users
     socket.on('get-users', () => {
         const users = Object.keys(userCredentials).map(username => ({ username }));
         socket.emit('userList', users);
     });
 
-    socket.on('edit-user', ({ oldUsername, newUsername, newPassword }) => {
+    // Edit a user (update hashed password)
+    socket.on('edit-user', async ({ oldUsername, newUsername, newPassword }) => {
         if (
             oldUsername in userCredentials &&
             newUsername &&
             newPassword &&
             (!(newUsername in userCredentials) || newUsername === oldUsername)
         ) {
+            const hashedPassword = await bcrypt.hash(newPassword, 10);  // Hash the new password
             delete userCredentials[oldUsername];
-            userCredentials[newUsername] = newPassword;
+            userCredentials[newUsername] = hashedPassword;
             saveUserCredentials();
             socket.emit('userUpdated', { success: true, username: newUsername });
         } else {
@@ -126,6 +144,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Delete a user
     socket.on('delete-user', (username) => {
         if (username in userCredentials) {
             delete userCredentials[username];
@@ -136,11 +155,13 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Handle disconnect
     socket.on('disconnect', () => {
         delete authenticatedUsers[socket.id];
     });
 });
 
+// Clear chat messages daily at midnight
 cron.schedule('0 0 * * *', () => {
     messages = [];
     try {
@@ -151,10 +172,12 @@ cron.schedule('0 0 * * *', () => {
     }
 });
 
+// Serve admin page
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
