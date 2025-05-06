@@ -1,18 +1,17 @@
 {
   "name": "chat-server",
   "version": "1.0.0",
-  "description": "A simple chat server using Express and Socket.io with admin access and daily message reset",
+  "description": "Express + Socket.IO chat with admin panel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "node-cron": "^3.0.2",
-    "mongoose": "^7.6.1",
     "bcrypt": "^5.1.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.2",
+    "socket.io": "^4.7.2"
   },
   "engines": {
     "node": "18.x"

@@ -7,157 +7,108 @@ const { Server } = require("socket.io");
 const cron = require("node-cron");
 const path = require("path");
 
+// === Config ===
+const PORT = process.env.PORT || 3000;
+const FRONTEND_ORIGIN = "https://unknown.ftp.sh";
+const ADMIN_PASSWORD = "7482broncos";
+const ADMIN_USERNAME = "Burkes";
+
+// === App Setup ===
 const app = express();
 const server = http.createServer(app);
-
-// === CORS Configuration ===
-const FRONTEND_ORIGIN = "https://unknown.ftp.sh";
-
-app.use(cors({
-  origin: FRONTEND_ORIGIN,
-  methods: ["GET", "POST"],
-  credentials: true
-}));
-
-// Serve static files if you ever need to
+app.use(cors({ origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
 
+// === Socket.IO ===
 const io = new Server(server, {
-  cors: {
-    origin: FRONTEND_ORIGIN,
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+  cors: { origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }
 });
 
+// === File Paths ===
 const USERS_FILE = path.join(__dirname, "users.json");
 const MESSAGES_FILE = path.join(__dirname, "messages.json");
 
-// Load or initialize users
-function loadUserCredentials() {
-  try {
-    if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "{}");
-    const raw = fs.readFileSync(USERS_FILE, "utf-8");
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) {
-    console.error("Error loading users.json:", e);
-    return {};
-  }
+// === Load / Save Helpers ===
+function loadUsers() {
+  if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "{}");
+  return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8") || "{}");
 }
-
-// Save users back to file
-function saveUserCredentials(creds) {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(creds, null, 2));
-    console.log("users.json updated");
-  } catch (e) {
-    console.error("Error writing users.json:", e);
-  }
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
 }
-
-let userCredentials = loadUserCredentials();
-
-// Load or initialize messages
-let messages = [];
-try {
+function loadMessages() {
   if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, "[]");
-  messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, "utf-8"));
-} catch (e) {
-  console.error("Error loading messages.json:", e);
-  messages = [];
+  return JSON.parse(fs.readFileSync(MESSAGES_FILE, "utf-8") || "[]");
+}
+function saveMessages(msgs) {
+  fs.writeFileSync(MESSAGES_FILE, JSON.stringify(msgs, null, 2));
 }
 
-io.on("connection", (socket) => {
-  console.log("🔌 User connected:", socket.id);
+let userCredentials = loadUsers();
+let messages = loadMessages();
+
+// === Socket Events ===
+io.on("connection", socket => {
+  console.log("🔌 Connected:", socket.id);
   socket.emit("previousMessages", messages);
 
-  // Chat user authentication
-  socket.on("authenticateChatUser", async (data, callback) => {
-    console.log("🔑 auth attempt:", data.username);
-    const hash = userCredentials[data.username];
-    if (!hash) {
-      console.log("❌ user not found:", data.username);
-      return callback({ success: false });
-    }
-    const ok = await bcrypt.compare(data.password, hash);
-    console.log(ok ? "✅ auth success" : "❌ auth failed", data.username);
-    callback({ success: ok });
+  // Admin authentication
+  socket.on("authenticate", (pw, cb) => {
+    cb({ success: pw === ADMIN_PASSWORD, username: pw === ADMIN_PASSWORD ? ADMIN_USERNAME : null });
   });
 
-  // Admin: add user
+  // Chat user authentication
+  socket.on("authenticateChatUser", async ({ username, password }, cb) => {
+    const hash = userCredentials[username];
+    if (!hash) return cb({ success: false });
+    const ok = await bcrypt.compare(password, hash);
+    cb({ success: ok, username: ok ? username : null });
+  });
+
+  // User management (admin-only)
+  socket.on("get-users", () => {
+    socket.emit("userList", Object.keys(userCredentials).map(u=>({ username: u })));
+  });
   socket.on("add-user", async ({ user, pwd }) => {
-    console.log("➕ add-user:", user);
-    if (!user || !pwd || userCredentials[user]) {
-      return socket.emit("userAdded", { success: false });
-    }
-    const hash = await bcrypt.hash(pwd, 10);
-    userCredentials[user] = hash;
-    saveUserCredentials(userCredentials);
+    if (userCredentials[user]) return socket.emit("userAdded", { success: false });
+    userCredentials[user] = await bcrypt.hash(pwd, 10);
+    saveUsers(userCredentials);
     socket.emit("userAdded", { success: true, user });
   });
-
-  // Admin: list users
-  socket.on("get-users", () => {
-    const list = Object.keys(userCredentials).map(u => ({ username: u }));
-    console.log("📃 get-users:", list);
-    socket.emit("userList", list);
-  });
-
-  // Admin: edit user
   socket.on("edit-user", async ({ oldUsername, newUsername, newPassword }) => {
-    console.log("✏️ edit-user:", oldUsername, "→", newUsername);
-    if (
-      !userCredentials[oldUsername] ||
-      !newUsername ||
-      !newPassword ||
-      (newUsername !== oldUsername && userCredentials[newUsername])
-    ) {
+    if (!userCredentials[oldUsername] || (newUsername !== oldUsername && userCredentials[newUsername]))
       return socket.emit("userUpdated", { success: false });
-    }
     delete userCredentials[oldUsername];
     userCredentials[newUsername] = await bcrypt.hash(newPassword, 10);
-    saveUserCredentials(userCredentials);
+    saveUsers(userCredentials);
     socket.emit("userUpdated", { success: true, username: newUsername });
   });
-
-  // Admin: delete user
-  socket.on("delete-user", (username) => {
-    console.log("➖ delete-user:", username);
-    if (!userCredentials[username]) {
-      return socket.emit("userDeleted", { success: false });
-    }
+  socket.on("delete-user", username => {
+    if (!userCredentials[username]) return socket.emit("userDeleted", { success: false });
     delete userCredentials[username];
-    saveUserCredentials(userCredentials);
+    saveUsers(userCredentials);
     socket.emit("userDeleted", { success: true, username });
   });
 
-  // Handle chat messages
-  socket.on("message", (msg) => {
-    console.log("💬 message:", msg);
+  // Chat messaging
+  socket.on("message", msg => {
     messages.push(msg);
     if (messages.length > 100) messages.shift();
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
+    saveMessages(messages);
     io.emit("message", msg);
   });
+  socket.on("requestMessages", () => socket.emit("previousMessages", messages));
 
-  // Send history on request
-  socket.on("requestMessages", () => {
-    console.log("📥 requestMessages");
-    socket.emit("previousMessages", messages);
-  });
-
-  socket.on("disconnect", () => {
-    console.log("🔌 User disconnected:", socket.id);
-  });
+  socket.on("disconnect", () => console.log("❌ Disconnected:", socket.id));
 });
 
-// Daily reset at midnight
+// Daily reset
 cron.schedule("0 0 * * *", () => {
   messages = [];
-  fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
+  saveMessages(messages);
   io.emit("chatReset");
   console.log("🕛 Chat cleared at midnight");
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
