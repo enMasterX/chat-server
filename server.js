@@ -16,21 +16,13 @@ const ADMIN_USERNAME = "Burkes";
 // === App Setup ===
 const app = express();
 const server = http.createServer(app);
-
-// CORS for Express
 app.use(cors({ origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }));
-
-// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// Socket.IO setup with CORS
+// Socket.IO with CORS
 const io = new Server(server, {
-  cors: {
-    origin: FRONTEND_ORIGIN,
-    methods: ["GET","POST"],
-    credentials: true
-  }
+  cors: { origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }
 });
 
 // File paths
@@ -55,10 +47,10 @@ function saveMessages(msgs) {
   fs.writeFileSync(MESSAGES_FILE, JSON.stringify(msgs, null, 2));
 }
 
-let userCredentials = loadUsers();
+// User structure: { [username]: { hash: string, pwd: string } }
+let userStore = loadUsers();
 let messages = loadMessages();
 
-// Socket.IO events
 io.on("connection", socket => {
   console.log("🔌 Connected:", socket.id);
   socket.emit("previousMessages", messages);
@@ -71,43 +63,44 @@ io.on("connection", socket => {
 
   // Chat user auth
   socket.on("authenticateChatUser", async ({ username, password }, cb) => {
-    const hash = userCredentials[username];
-    if (!hash) return cb({ success: false });
-    const ok = await bcrypt.compare(password, hash);
+    const user = userStore[username];
+    if (!user) return cb({ success: false });
+    const ok = await bcrypt.compare(password, user.hash);
     cb({ success: ok, username: ok ? username : null });
   });
 
-  // Admin: list users including hashed passwords
+  // Admin: list users including plaintext passwords
   socket.on("get-users", () => {
-    const list = Object.entries(userCredentials).map(([u, hash]) => ({ username: u, hash }));
+    const list = Object.entries(userStore).map(([u, { hash, pwd }]) => ({ username: u, password: pwd }));
     socket.emit("userList", list);
   });
 
   // Admin: add user
   socket.on("add-user", async ({ user, pwd }) => {
-    if (userCredentials[user]) return socket.emit("userAdded", { success: false });
-    userCredentials[user] = await bcrypt.hash(pwd, 10);
-    saveUsers(userCredentials);
+    if (userStore[user]) return socket.emit("userAdded", { success: false });
+    const hash = await bcrypt.hash(pwd, 10);
+    userStore[user] = { hash, pwd };
+    saveUsers(userStore);
     socket.emit("userAdded", { success: true, user });
   });
 
   // Admin: edit user
   socket.on("edit-user", async ({ oldUsername, newUsername, newPassword }) => {
-    if (!userCredentials[oldUsername] ||
-        (newUsername !== oldUsername && userCredentials[newUsername])) {
+    if (!userStore[oldUsername] || (newUsername !== oldUsername && userStore[newUsername])) {
       return socket.emit("userUpdated", { success: false });
     }
-    delete userCredentials[oldUsername];
-    userCredentials[newUsername] = await bcrypt.hash(newPassword, 10);
-    saveUsers(userCredentials);
+    delete userStore[oldUsername];
+    const hash = await bcrypt.hash(newPassword, 10);
+    userStore[newUsername] = { hash, pwd: newPassword };
+    saveUsers(userStore);
     socket.emit("userUpdated", { success: true, username: newUsername });
   });
 
   // Admin: delete user
   socket.on("delete-user", username => {
-    if (!userCredentials[username]) return socket.emit("userDeleted", { success: false });
-    delete userCredentials[username];
-    saveUsers(userCredentials);
+    if (!userStore[username]) return socket.emit("userDeleted", { success: false });
+    delete userStore[username];
+    saveUsers(userStore);
     socket.emit("userDeleted", { success: true, username });
   });
 
