@@ -66,7 +66,6 @@ io.on("connection", socket => {
   // Admin login
   socket.on("authenticate", (pw, cb) => {
     const ok = pw === ADMIN_PASSWORD;
-    console.log(ok ? "✅ Admin auth" : "❌ Admin auth failed", pw);
     cb({ success: ok, username: ok ? ADMIN_USERNAME : null });
   });
 
@@ -75,13 +74,12 @@ io.on("connection", socket => {
     const hash = userCredentials[username];
     if (!hash) return cb({ success: false });
     const ok = await bcrypt.compare(password, hash);
-    console.log(ok ? "✅ User auth" : "❌ User auth failed", username);
     cb({ success: ok, username: ok ? username : null });
   });
 
-  // Admin: list users
+  // Admin: list users including hashed passwords
   socket.on("get-users", () => {
-    const list = Object.keys(userCredentials).map(u => ({ username: u }));
+    const list = Object.entries(userCredentials).map(([u, hash]) => ({ username: u, hash }));
     socket.emit("userList", list);
   });
 
@@ -132,7 +130,6 @@ cron.schedule("0 0 * * *", () => {
   messages = [];
   saveMessages(messages);
   io.emit("chatReset");
-  console.log("🕛 Chat cleared at midnight");
 });
 
 server.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
