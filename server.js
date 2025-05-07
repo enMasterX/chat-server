@@ -2,7 +2,6 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const fs = require("fs");
-const bcrypt = require("bcrypt");
 const { Server } = require("socket.io");
 const cron = require("node-cron");
 const path = require("path");
@@ -20,7 +19,7 @@ app.use(cors({ origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: tr
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// Socket.IO with CORS
+// Socket.IO setup with CORS
 const io = new Server(server, {
   cors: { origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }
 });
@@ -29,7 +28,7 @@ const io = new Server(server, {
 const USERS_FILE = path.join(__dirname, "users.json");
 const MESSAGES_FILE = path.join(__dirname, "messages.json");
 
-// Load or initialize users
+// Load or initialize users (plaintext passwords)
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "{}");
   return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8") || "{}");
@@ -47,7 +46,7 @@ function saveMessages(msgs) {
   fs.writeFileSync(MESSAGES_FILE, JSON.stringify(msgs, null, 2));
 }
 
-// User structure: { [username]: { hash: string, pwd: string } }
+// userStore: { username: plaintextPassword }
 let userStore = loadUsers();
 let messages = loadMessages();
 
@@ -61,37 +60,35 @@ io.on("connection", socket => {
     cb({ success: ok, username: ok ? ADMIN_USERNAME : null });
   });
 
-  // Chat user auth
-  socket.on("authenticateChatUser", async ({ username, password }, cb) => {
-    const user = userStore[username];
-    if (!user) return cb({ success: false });
-    const ok = await bcrypt.compare(password, user.hash);
+  // Chat user auth (plaintext)
+  socket.on("authenticateChatUser", ({ username, password }, cb) => {
+    const stored = userStore[username];
+    const ok = stored && stored === password;
+    console.log(ok ? "✅ User auth" : "❌ User auth failed", username);
     cb({ success: ok, username: ok ? username : null });
   });
 
-  // Admin: list users including plaintext passwords
+  // Admin: list users with plaintext passwords
   socket.on("get-users", () => {
-    const list = Object.entries(userStore).map(([u, { hash, pwd }]) => ({ username: u, password: pwd }));
+    const list = Object.entries(userStore).map(([u, pwd]) => ({ username: u, password: pwd }));
     socket.emit("userList", list);
   });
 
   // Admin: add user
-  socket.on("add-user", async ({ user, pwd }) => {
+  socket.on("add-user", ({ user, pwd }) => {
     if (userStore[user]) return socket.emit("userAdded", { success: false });
-    const hash = await bcrypt.hash(pwd, 10);
-    userStore[user] = { hash, pwd };
+    userStore[user] = pwd;
     saveUsers(userStore);
     socket.emit("userAdded", { success: true, user });
   });
 
   // Admin: edit user
-  socket.on("edit-user", async ({ oldUsername, newUsername, newPassword }) => {
+  socket.on("edit-user", ({ oldUsername, newUsername, newPassword }) => {
     if (!userStore[oldUsername] || (newUsername !== oldUsername && userStore[newUsername])) {
       return socket.emit("userUpdated", { success: false });
     }
     delete userStore[oldUsername];
-    const hash = await bcrypt.hash(newPassword, 10);
-    userStore[newUsername] = { hash, pwd: newPassword };
+    userStore[newUsername] = newPassword;
     saveUsers(userStore);
     socket.emit("userUpdated", { success: true, username: newUsername });
   });
