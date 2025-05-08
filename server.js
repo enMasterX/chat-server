@@ -8,7 +8,7 @@ const path = require("path");
 
 // === Config ===
 const PORT = process.env.PORT || 3000;
-const FRONTEND_ORIGIN = "https://unknown.ftp.sh";
+const FRONTEND_ORIGIN = "https://enmasterx.ftp.sh";
 const ADMIN_PASSWORD = "7482broncos";
 const ADMIN_USERNAME = "Burkes";
 
