@@ -101,12 +101,13 @@ io.on("connection", socket => {
     socket.emit("userDeleted", { success: true, username });
   });
 
-  // Chat: handle message
-  socket.on("message", msg => {
-    messages.push(msg);
+  // Chat: handle message (now expecting { username, text })
+  socket.on("message", ({ username, text }) => {
+    const fullMsg = `${username}: ${text}`;
+    messages.push(fullMsg);
     if (messages.length > 100) messages.shift();
     saveMessages(messages);
-    io.emit("message", msg);
+    io.emit("message", fullMsg);
   });
 
   // Chat: history
