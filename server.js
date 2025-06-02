@@ -46,9 +46,12 @@ function saveMessages(msgs) {
   fs.writeFileSync(MESSAGES_FILE, JSON.stringify(msgs, null, 2));
 }
 
-// userStore: { username: plaintextPassword }
+// In-memory store for users and messages
 let userStore = loadUsers();
 let messages = loadMessages();
+
+// Map each socket.id to its authenticated chat username
+const socketUsernames = {};
 
 io.on("connection", socket => {
   console.log("🔌 Connected:", socket.id);
@@ -65,7 +68,12 @@ io.on("connection", socket => {
     const stored = userStore[username];
     const ok = stored && stored === password;
     console.log(ok ? "✅ User auth" : "❌ User auth failed", username);
-    cb({ success: ok, username: ok ? username : null });
+    if (ok) {
+      socketUsernames[socket.id] = username;
+      cb({ success: true, username });
+    } else {
+      cb({ success: false, username: null });
+    }
   });
 
   // Admin: list users with plaintext passwords
@@ -101,9 +109,10 @@ io.on("connection", socket => {
     socket.emit("userDeleted", { success: true, username });
   });
 
-  // Chat: handle message (now expecting { username, text })
-  socket.on("message", ({ username, text }) => {
-    const fullMsg = `${username}: ${text}`;
+  // Chat: handle message (clients send only raw text)
+  socket.on("message", msgText => {
+    const username = socketUsernames[socket.id] || "Anonymous";
+    const fullMsg = `${username}: ${msgText}`;
     messages.push(fullMsg);
     if (messages.length > 100) messages.shift();
     saveMessages(messages);
@@ -113,7 +122,10 @@ io.on("connection", socket => {
   // Chat: history
   socket.on("requestMessages", () => socket.emit("previousMessages", messages));
 
-  socket.on("disconnect", () => console.log("❌ Disconnected:", socket.id));
+  socket.on("disconnect", () => {
+    console.log("❌ Disconnected:", socket.id);
+    delete socketUsernames[socket.id];
+  });
 });
 
 // Daily clear
