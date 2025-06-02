@@ -15,13 +15,23 @@ const ADMIN_USERNAME = "Burkes";
 // === App Setup ===
 const app = express();
 const server = http.createServer(app);
-app.use(cors({ origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }));
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN,
+    methods: ["GET", "POST"],
+    credentials: true,
+  })
+);
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
 // Socket.IO setup with CORS
 const io = new Server(server, {
-  cors: { origin: FRONTEND_ORIGIN, methods: ["GET","POST"], credentials: true }
+  cors: {
+    origin: FRONTEND_ORIGIN,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 
 // File paths
@@ -53,7 +63,7 @@ let messages = loadMessages();
 // Map each socket.id to its authenticated chat username
 const socketUsernames = {};
 
-io.on("connection", socket => {
+io.on("connection", (socket) => {
   console.log("🔌 Connected:", socket.id);
   socket.emit("previousMessages", messages);
 
@@ -78,7 +88,10 @@ io.on("connection", socket => {
 
   // Admin: list users with plaintext passwords
   socket.on("get-users", () => {
-    const list = Object.entries(userStore).map(([u, pwd]) => ({ username: u, password: pwd }));
+    const list = Object.entries(userStore).map(([u, pwd]) => ({
+      username: u,
+      password: pwd,
+    }));
     socket.emit("userList", list);
   });
 
@@ -92,7 +105,10 @@ io.on("connection", socket => {
 
   // Admin: edit user
   socket.on("edit-user", ({ oldUsername, newUsername, newPassword }) => {
-    if (!userStore[oldUsername] || (newUsername !== oldUsername && userStore[newUsername])) {
+    if (
+      !userStore[oldUsername] ||
+      (newUsername !== oldUsername && userStore[newUsername])
+    ) {
       return socket.emit("userUpdated", { success: false });
     }
     delete userStore[oldUsername];
@@ -102,7 +118,7 @@ io.on("connection", socket => {
   });
 
   // Admin: delete user
-  socket.on("delete-user", username => {
+  socket.on("delete-user", (username) => {
     if (!userStore[username]) return socket.emit("userDeleted", { success: false });
     delete userStore[username];
     saveUsers(userStore);
@@ -110,7 +126,7 @@ io.on("connection", socket => {
   });
 
   // Chat: handle message (clients send only raw text)
-  socket.on("message", msgText => {
+  socket.on("message", (msgText) => {
     const username = socketUsernames[socket.id] || "Anonymous";
     const fullMsg = `${username}: ${msgText}`;
     messages.push(fullMsg);
