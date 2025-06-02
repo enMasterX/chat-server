@@ -119,7 +119,8 @@ io.on("connection", (socket) => {
 
   // Admin: delete user
   socket.on("delete-user", (username) => {
-    if (!userStore[username]) return socket.emit("userDeleted", { success: false });
+    if (!userStore[username])
+      return socket.emit("userDeleted", { success: false });
     delete userStore[username];
     saveUsers(userStore);
     socket.emit("userDeleted", { success: true, username });
@@ -127,6 +128,7 @@ io.on("connection", (socket) => {
 
   // Chat: handle message (clients send only raw text)
   socket.on("message", (msgText) => {
+    // Look up who sent it
     const username = socketUsernames[socket.id] || "Anonymous";
     const fullMsg = `${username}: ${msgText}`;
     messages.push(fullMsg);
