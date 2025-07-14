@@ -83,17 +83,29 @@ io.on("connection", (socket) => {
     if (!adminSockets.has(socket.id)) return;
     showUsernames = !!flag;
     io.emit("username-display-status", showUsernames);
-    // No need to resend history here; client will re-render on status change
     console.log("⚙️ showUsernames =", showUsernames);
   });
 
-  // Chat user auth
+  // Chat user auth (NOW CASE-INSENSITIVE)
   socket.on("authenticateChatUser", ({ username, password }, cb) => {
-    const stored = userStore[username];
-    const ok = stored && stored === password;
+    const inputUser = username.trim().toLowerCase();
+    const inputPass = password.trim().toLowerCase();
+
+    // Find a stored username matching case-insensitively
+    const matchedKey = Object.keys(userStore)
+      .find(u => u.toLowerCase() === inputUser);
+
+    const storedPass = matchedKey ? userStore[matchedKey] : null;
+    const ok = storedPass && storedPass.toLowerCase() === inputPass;
+
     console.log(ok ? "✅ User auth" : "❌ User auth failed", username);
-    if (ok) socket.User = username;
-    cb({ success: ok, username: ok ? username : null });
+
+    if (ok) {
+      socket.User = matchedKey;
+      cb({ success: true, username: matchedKey });
+    } else {
+      cb({ success: false, username: null });
+    }
   });
 
   // Admin user CRUD
@@ -104,7 +116,9 @@ io.on("connection", (socket) => {
   });
   socket.on("add-user", ({ user, pwd }, cb) => {
     if (!adminSockets.has(socket.id) || userStore[user]) return cb({ success: false });
-    userStore[user] = pwd; saveUsers(userStore); cb({ success: true });
+    userStore[user] = pwd;
+    saveUsers(userStore);
+    cb({ success: true });
   });
   socket.on("edit-user", ({ oldUsername, newUsername, newPassword }, cb) => {
     if (
@@ -119,7 +133,9 @@ io.on("connection", (socket) => {
   });
   socket.on("delete-user", (username, cb) => {
     if (!adminSockets.has(socket.id) || !userStore[username]) return cb({ success: false });
-    delete userStore[username]; saveUsers(userStore); cb({ success: true });
+    delete userStore[username];
+    saveUsers(userStore);
+    cb({ success: true });
   });
 
   // Handle chat messages
@@ -129,7 +145,6 @@ io.on("connection", (socket) => {
     messages.push(msgObj);
     if (messages.length > 100) messages.shift();
     saveMessages(messages);
-    // Always send raw object
     io.emit("message", msgObj);
     console.log(`${username}: ${message}`);
   });
